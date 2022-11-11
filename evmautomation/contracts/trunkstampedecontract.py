@@ -12,6 +12,7 @@ class TrunkStampedeContract(BscContract):
     """
 
     DEPOSITS_DIV = 0.75 # deposits divisor (taken from website source)
+    REWARDS_FEE = 0.025 # 2.5% on the rewards
     DAILY_INTEREST = 0.0056 # daily interest rate = 0.56%
 
     def __init__(self, rpc_url: str, wallet_address: str) -> None:
@@ -22,7 +23,7 @@ class TrunkStampedeContract(BscContract):
         super().__init__(rpc_url, TRUNK_STAMPEDE_CONTRACT_ADDRESS, TRUNK_STAMPEDE_ABI, wallet_address)
 
     def get_user_available(self):
-        return float(self._web3.fromWei(self._contract.functions.claimsAvailable(self._wallet).call(), "ether"))
+        return float(self._web3.fromWei(self._contract.functions.claimsAvailable(self._wallet).call(), "ether")) * (1 - self.REWARDS_FEE)
 
     def get_user_deposits(self):
         data = self.get_user_info()
@@ -59,7 +60,7 @@ class TrunkStampedeContract(BscContract):
             return False
         hydrate_target =  (d * percent_reach)
         missing = max(0, hydrate_target - a)
-        per_minute = d * self.DAILY_INTEREST / 86400
+        per_minute = d * self.get_daily_interest() / 86400
         left = int(missing / per_minute)
         return left
 
@@ -68,5 +69,23 @@ class TrunkStampedeContract(BscContract):
         returns the roll transaction.
         """
 
-        tx = self._contract.functions.roll().buildTransaction(self.get_transaction_options(gas))
+        tx = self._contract.functions.roll().build_transaction(self.get_transaction_options(gas))
         return tx
+
+    def get_claim_transaction(self, gas=600000):
+        """
+        returns the claim transaction
+        """
+        tx = self._contract.functions.claim().build_transaction(self.get_transaction_options(gas))
+        return tx
+
+    def get_scale_by_peg(self, apr):
+        """
+        returns the current APR scaled by peg
+        """
+
+        scaled_apr = self._web3.fromWei(self._contract.functions.scaleByPeg(self._web3.toWei(apr, "ether")).call(), "ether")
+        return float(scaled_apr)
+
+    def get_daily_interest(self):
+        return self.get_scale_by_peg(205) / 365 / 100
